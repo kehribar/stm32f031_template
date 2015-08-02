@@ -5,7 +5,7 @@
 #------------------------------------------------------------------------------
 
 # Sub directories
-VPATH = BackendSupport/CMSIS BackendSupport/StdPeriph HardwareLayer
+VPATH = ../BackendSupport/CMSIS ../BackendSupport/StdPeriph ../HardwareLayer
 
 # Object files
 OBJECTS  = main.o systick_delay.o
@@ -22,7 +22,7 @@ TOOLCHAIN_FOLDER = /Users/kehribar/gcc-arm-none-eabi-4_9-2015q2/bin/
 CDEFS = -DSTM32F031 -DUSE_STDPERIPH_DRIVER -DARM_MATH_CM0
 
 # Linker script
-LDSCRIPT = BackendSupport/stm32f031_linker.ld
+LDSCRIPT = ../BackendSupport/stm32f031_linker.ld
 
 # Optimization level, can be [0, 1, 2, 3, s].
 OPTLVL:= s 
@@ -35,7 +35,7 @@ OBJECTS_O := $(addprefix $(OBJDIR)/,$(OBJECTS))
 COMMONFLAGS = -O$(OPTLVL) -g -ffunction-sections -std=c99 -Wall
 MCUFLAGS    = -mthumb -mcpu=cortex-m0
 
-CFLAGS  = $(COMMONFLAGS) $(MCUFLAGS) -I. -IBackendSupport/CMSIS -IBackendSupport/StdPeriph -IHardwareLayer $(CDEFS)
+CFLAGS  = $(COMMONFLAGS) $(MCUFLAGS) -I. -I../BackendSupport/CMSIS -I../BackendSupport/StdPeriph -I../HardwareLayer $(CDEFS)
 CFLAGS += -ffreestanding -nostdlib
 
 LDFLAGS  = $(COMMONFLAGS) $(MCUFLAGS) -fno-exceptions
@@ -85,10 +85,10 @@ stlink-flash:
 	st-flash write $(OBJDIR)/main.bin 0x8000000
 
 openocd-flash:
-	$(OPENOCD) -f BackendSupport/openocd.cfg -c flash_chip
+	$(OPENOCD) -f ../BackendSupport/openocd.cfg -c flash_chip
 
 debugserver:
-	$(OPENOCD) -f BackendSupport/openocd.cfg
+	$(OPENOCD) -f ../BackendSupport/openocd.cfg
 
 ## Run 'make debugserver' in a seperate console window before running 'make debug'
 debug:
