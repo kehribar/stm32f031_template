@@ -5,12 +5,11 @@
 #------------------------------------------------------------------------------
 
 # Sub directories
-VPATH = BackendSupport/CMSIS BackendSupport/StdPeriph
+VPATH = BackendSupport/CMSIS BackendSupport/StdPeriph HardwareLayer
 
 # Object files
-OBJECTS  = main.o
-OBJECTS += startup_stm32f030.o system_stm32f0xx.o
-OBJECTS += stm32f0xx_rcc.o stm32f0xx_gpio.o stm32f0xx_misc.o
+OBJECTS  = main.o systick_delay.o
+OBJECTS += startup_stm32f030.o system_stm32f0xx.o stm32f0xx_rcc.o
 
 # Use 'launchpad.net/gcc-arm-embedded' version for a complete toolchain setup
 TOOLCHAIN_FOLDER = /Users/kehribar/gcc-arm-none-eabi-4_9-2015q2/bin/
@@ -36,7 +35,7 @@ OBJECTS_O := $(addprefix $(OBJDIR)/,$(OBJECTS))
 COMMONFLAGS = -O$(OPTLVL) -g -ffunction-sections -std=c99 -Wall
 MCUFLAGS    = -mthumb -mcpu=cortex-m0
 
-CFLAGS  = $(COMMONFLAGS) $(MCUFLAGS) -I. -IBackendSupport/CMSIS -IBackendSupport/StdPeriph $(CDEFS)
+CFLAGS  = $(COMMONFLAGS) $(MCUFLAGS) -I. -IBackendSupport/CMSIS -IBackendSupport/StdPeriph -IHardwareLayer $(CDEFS)
 CFLAGS += -ffreestanding -nostdlib
 
 LDFLAGS  = $(COMMONFLAGS) $(MCUFLAGS) -fno-exceptions
@@ -51,6 +50,7 @@ OBJCPY = $(ARCH)-objcopy
 OBJDMP = $(ARCH)-objdump
 GDB    = $(ARCH)-gdb
 SIZE   = $(ARCH)-size
+OPENOCD = openocd
 
 CPFLAGS = --output-target=binary
 ODFLAGS	= -x --syms
@@ -82,10 +82,26 @@ main.o:
 	$(AS) -c -o $(OBJDIR)/$@ $<
 
 stlink-flash:
-	st-flash write $(OBJDIR)/main.bin 0x8000000 
+	st-flash write $(OBJDIR)/main.bin 0x8000000
+
+openocd-flash:
+	$(OPENOCD) -f BackendSupport/openocd.cfg -c flash_chip
+
+debugserver:
+	$(OPENOCD) -f BackendSupport/openocd.cfg
+
+## Run 'make debugserver' in a seperate console window before running 'make debug'
+debug:
+	make all && $(GDB) obj/main.elf \
+		-ex "target remote localhost:3333" \
+		-ex "load" \
+		-ex "b main" \
+		-ex "monitor reset halt" \
+		-ex "continue" \
+		-ex "-"
 
 iterate:
-	make clean && make all && make stlink-flash
+	make clean && make all && make openocd-flash
 
 -include $(shell mkdir $(OBJDIR) 2>/dev/null) $(wildcard $(OBJDIR)/*.d)
 
