@@ -1,41 +1,46 @@
-/*-----------------------------------------------------------------------------
+/*----------------------------------------------------------------------------
 /
 /
 /----------------------------------------------------------------------------*/
 #include "stm32f0xx.h"
-#include "stm32f0xx_gpio.h"
 #include "stm32f0xx_rcc.h"
-
+/*---------------------------------------------------------------------------*/
+#include "digital.h"
+#include "systick_delay.h"
+/*---------------------------------------------------------------------------*/
+static void hardware_init();
+/*---------------------------------------------------------------------------*/
 int main(void)
-{
-  volatile int i = 0;
-
-  GPIO_InitTypeDef InitGpio;
-
-  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
-
-  InitGpio.GPIO_Pin = GPIO_Pin_5;
-  InitGpio.GPIO_Mode = GPIO_Mode_OUT;
-  InitGpio.GPIO_Speed = GPIO_Speed_Level_1;
-  InitGpio.GPIO_OType = GPIO_OType_PP;
-  InitGpio.GPIO_PuPd = GPIO_PuPd_NOPULL;
-
-  GPIO_Init(GPIOA, &InitGpio);
+{  
+  hardware_init();
 
   while(1)
   {
-    for(i=0;i<50000;i++);
-    GPIO_ResetBits(GPIOA,GPIO_Pin_5);
+    if(digitalRead(A,4) == 0)
+    {
+      _delay_ms(50);
+      digitalWrite(A,5,HIGH);
 
-    for(i=0;i<50000;i++);
-    GPIO_SetBits(GPIOA,GPIO_Pin_5);
-
-    for(i=0;i<50000;i++);
-    GPIO_ResetBits(GPIOA,GPIO_Pin_5);
-
-    for(i=0;i<500000;i++);
-    GPIO_SetBits(GPIOA,GPIO_Pin_5);
-  } 
+      _delay_ms(50);
+      digitalWrite(A,5,LOW);
+    }
+  }
 
   return 0;
 }
+/*---------------------------------------------------------------------------*/
+static void hardware_init()
+{
+  systick_init(SYSTICK_1MS);
+
+  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
+
+  pinMode(A,5,OUTPUT);
+  digitalWrite(A,5,LOW);
+
+  pinMode(A,4,INPUT);
+  setInternalPullup(A,4);
+
+  _delay_ms(10);
+}
+/*---------------------------------------------------------------------------*/
