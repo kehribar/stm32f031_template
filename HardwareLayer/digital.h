@@ -1,11 +1,9 @@
-/*
-* ----------------------------------------------------------------------------
-* “THE COFFEEWARE LICENSE” (Revision 1):
-* <ihsan@kehribar.me> wrote this file. As long as you retain this notice you
-* can do whatever you want with this stuff. If we meet some day, and you think
-* this stuff is worth it, you can buy me a coffee in return.
-* -----------------------------------------------------------------------------
-*/
+/*----------------------------------------------------------------------------
+/ “THE COFFEEWARE LICENSE” (Revision 1):
+/ <ihsan@kehribar.me> wrote this file. As long as you retain this notice you
+/ can do whatever you want with this stuff. If we meet some day, and you think
+/ this stuff is worth it, you can buy me a coffee in return.
+/----------------------------------------------------------------------------*/
 
 /* STM32F0XX spesific digital I/O macros */
 
