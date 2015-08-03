@@ -49,7 +49,4 @@
 
 #define setInternalPullDown(port,pin) (GPIO ##port ->PUPDR &= ~(0x03 << (pin << 1))); (GPIO ##port ->PUPDR |= (0x02 << (pin << 1))) 
 
-// #define setAlternativeFunction(port,pin,state) (pin < 8) ? (((GPIO ##port ->AFR[0] &= ~(0x07 << (pin << 2))); (GPIO ##port ->AFR[0] |= (state << (pin << 2)))) : \
-                                                           // (((GPIO ##port ->AFR[1] &= ~(0x07 << ((pin-8) << 2))); (GPIO ##port ->AFR[1] |= (state << ((pin-8) << 2))))
-
 #endif

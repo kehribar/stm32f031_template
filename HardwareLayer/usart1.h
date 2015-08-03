@@ -8,6 +8,8 @@
 #include "stm32f0xx.h"
 #include "digital.h"
 
+/* blocking 'sendChar' method for usart1 */
 void usart1_sendChar(const uint8_t ch);
 
+/* basic initialisation for usart1 */
 void usart1_init(const uint32_t baud);
