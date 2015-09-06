@@ -41,7 +41,7 @@ int main(void)
       digitalWrite(A,0,HIGH);
       digitalWrite(A,9,HIGH);
 
-      DMA1->IFCR = DMA1_IT_TC3;
+      DMA1->IFCR |= DMA1_IT_TC3;
       
       for(i=0; i<16; i++)
       {
@@ -56,7 +56,7 @@ int main(void)
       digitalWrite(A,0,HIGH);
       digitalWrite(A,9,LOW);
 
-      DMA1->IFCR = DMA1_IT_HT3;      
+      DMA1->IFCR |= DMA1_IT_HT3;      
 
       for(i=0; i<16; i++)
       {
@@ -89,16 +89,19 @@ static void hardware_init()
   pinMode(A,0,OUTPUT);
   digitalWrite(A,0,LOW);
 
-  /* I2S pins ... */
+  /* I2S pin: Word select */
   pinMode(A,4,ALTFUNC);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource4, GPIO_AF_0);
 
+  /* I2S pin: Bit clock */
   pinMode(A,5,ALTFUNC);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource5, GPIO_AF_0);
   
+  /* I2S pin: Master clock */
   pinMode(A,6,ALTFUNC);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource6, GPIO_AF_0);
   
+  /* I2S pin: Data out */
   pinMode(A,7,ALTFUNC);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource7, GPIO_AF_0);
 
@@ -120,8 +123,8 @@ static void hardware_init()
   DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;  
   DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
   DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;
-  DMA_InitStructure.DMA_Priority = DMA_Priority_Low;
   DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+  DMA_InitStructure.DMA_Priority = DMA_Priority_VeryHigh;
   DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t)I2S_Buffer_Tx;
   DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable; 
   DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DR);
