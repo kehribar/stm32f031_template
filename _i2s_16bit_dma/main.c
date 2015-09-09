@@ -18,14 +18,14 @@
 /*---------------------------------------------------------------------------*/
 static void hardware_init();
 /*---------------------------------------------------------------------------*/
-uint16_t I2S_Buffer_Tx[32];
+uint16_t I2S_Buffer_Tx[128];
 /*---------------------------------------------------------------------------*/
 int main(void)
 { 
   uint8_t i;
-  uint8_t cnt = 0;   
+  int16_t cnt = -32768;
   uint16_t* Buffer_A = &(I2S_Buffer_Tx[0]);
-  uint16_t* Buffer_B = &(I2S_Buffer_Tx[16]);
+  uint16_t* Buffer_B = &(I2S_Buffer_Tx[64]);
   
   hardware_init();  
 
@@ -42,10 +42,14 @@ int main(void)
       digitalWrite(A,9,HIGH);
 
       DMA1->IFCR |= DMA1_IT_TC3;
-      
-      for(i=0; i<16; i++)
+            
+      for(i=0; i<64; i+=2)
       {
-        Buffer_B[i] = cnt++;
+        /* Left ch */
+        Buffer_B[i] = cnt++; 
+        
+        /* Right ch */
+        Buffer_B[i+1] = cnt << 1;
       }
 
       digitalWrite(A,0,LOW);
@@ -58,9 +62,13 @@ int main(void)
 
       DMA1->IFCR |= DMA1_IT_HT3;      
 
-      for(i=0; i<16; i++)
+      for(i=0; i<64; i+=2)
       {
-        Buffer_A[i] = 0x1000 + cnt++;
+         /* Left ch */
+        Buffer_A[i] = cnt++; 
+        
+        /* Right ch */
+        Buffer_A[i+1] = cnt << 1;
       }
       
       digitalWrite(A,0,LOW);
@@ -119,7 +127,7 @@ static void hardware_init()
   I2S_Init(SPI1, &I2S_InitStructure);
 
   /* DMA peripheral configuration */  
-  DMA_InitStructure.DMA_BufferSize = 32;
+  DMA_InitStructure.DMA_BufferSize = 128;
   DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;  
   DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
   DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;

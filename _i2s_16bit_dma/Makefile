@@ -101,6 +101,14 @@ debug:
 		-ex "continue" \
 		-ex "-"
 
+debug-gui:
+	make all && ddd --debugger $(GDB) obj/main.elf \
+		--eval-command="target remote localhost:3333" \
+		--eval-command="load" \
+		--eval-command="b main" \
+		--eval-command="monitor reset halt" \
+		--eval-command="continue"
+
 iterate:
 	make clean && make all && make openocd-flash
 
