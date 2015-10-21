@@ -101,8 +101,7 @@ static int16_t envelope_iterate(t_envelope* env, const t_envSetting* setting, co
     env->envelopeCounter = 0;   
   }    
   else if(env->state == 1) /* attack */
-  {
-    /* Max attack rate can be 32767 */
+  {    
     env->envelopeCounter += setting->attackRate;
     
     /* Check overflow! */
