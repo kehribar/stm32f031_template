@@ -11,45 +11,55 @@
 #include "stm32f0xx_misc.h"
 #include "stm32f0xx_usart.h"
 /*---------------------------------------------------------------------------*/
+#include "lut.h"
 #include "usart1.h"
 #include "digital.h"
 #include "xprintf.h"
 #include "systick_delay.h"
 /*---------------------------------------------------------------------------*/
-static void hardware_init();
+int32_t I2S_Buffer_Tx[128];
 /*---------------------------------------------------------------------------*/
-uint16_t I2S_Buffer_Tx[128];
+static void hardware_init();
+static int32_t convertDataForDma_24b(const int32_t data);
 /*---------------------------------------------------------------------------*/
 int main(void)
 { 
   uint8_t i;
-  int16_t cnt = -32768;
-  uint16_t* Buffer_A = &(I2S_Buffer_Tx[0]);
-  uint16_t* Buffer_B = &(I2S_Buffer_Tx[64]);
-  
+  int32_t data;
+  uint16_t phaseCnt;
+  uint16_t phaseInc;  
+  int32_t* const Buffer_A = &(I2S_Buffer_Tx[0]);
+  int32_t* const Buffer_B = &(I2S_Buffer_Tx[64]);
+
+  phaseCnt = 0;
+  phaseInc = 10000;
+
   hardware_init();  
 
   xprintf("> Hello World\r\n");
 
   while(1)
-  {
-    uint32_t tmpreg = DMA1->ISR;
+  { 
+    uint32_t tmpreg = DMA1->ISR;    
 
     /* Buffer_A will be read after this point. Start to fill Buffer_B now! */
     if(tmpreg & DMA1_IT_TC3)
     {
       digitalWrite(A,0,HIGH);
-      digitalWrite(A,9,HIGH);
 
       DMA1->IFCR |= DMA1_IT_TC3;
-            
+
       for(i=0; i<64; i+=2)
-      {
+      {       
+        /* Generate data */
+        phaseCnt += phaseInc;
+        data = sin_lut[phaseCnt >> 7];
+
         /* Left ch */
-        Buffer_B[i] = cnt++; 
+        Buffer_B[i] = convertDataForDma_24b(data);
         
         /* Right ch */
-        Buffer_B[i+1] = cnt << 1;
+        Buffer_B[i+1] = convertDataForDma_24b(data);
       }
 
       digitalWrite(A,0,LOW);
@@ -58,24 +68,37 @@ int main(void)
     else if(tmpreg & DMA1_IT_HT3)
     {
       digitalWrite(A,0,HIGH);
-      digitalWrite(A,9,LOW);
 
       DMA1->IFCR |= DMA1_IT_HT3;      
 
       for(i=0; i<64; i+=2)
       {
-         /* Left ch */
-        Buffer_A[i] = cnt++; 
+        /* Generate data */
+        phaseCnt += phaseInc;
+        data = sin_lut[phaseCnt >> 7];
+        
+        /* Left ch */
+        Buffer_A[i] = convertDataForDma_24b(data); 
         
         /* Right ch */
-        Buffer_A[i+1] = cnt << 1;
+        Buffer_A[i+1] = convertDataForDma_24b(data);
       }
       
       digitalWrite(A,0,LOW);
-    }
+    }    
   }
   
   return 0;
+}
+/*---------------------------------------------------------------------------*/
+static int32_t convertDataForDma_24b(const int32_t data)
+{      
+  uint32_t result;
+  uint32_t shiftedData;
+  shiftedData = data << 8;
+  result = (shiftedData & 0xFFFF0000) >> 16;
+  result |= (shiftedData & 0x0000FFFF) << 16;
+  return (int32_t)result;  
 }
 /*---------------------------------------------------------------------------*/
 static void hardware_init()
@@ -120,14 +143,14 @@ static void hardware_init()
   /* I2S peripheral configuration */
   I2S_InitStructure.I2S_CPOL = I2S_CPOL_Low;  
   I2S_InitStructure.I2S_Mode = I2S_Mode_MasterTx;
-  I2S_InitStructure.I2S_AudioFreq = I2S_AudioFreq_32k;
-  I2S_InitStructure.I2S_DataFormat = I2S_DataFormat_16b;
+  I2S_InitStructure.I2S_AudioFreq = I2S_AudioFreq_96k; // Divide this to 2 since we are using 24 bit I2S
+  I2S_InitStructure.I2S_DataFormat = I2S_DataFormat_32b;
   I2S_InitStructure.I2S_Standard = I2S_Standard_Phillips;  
   I2S_InitStructure.I2S_MCLKOutput = I2S_MCLKOutput_Enable;
   I2S_Init(SPI1, &I2S_InitStructure);
 
   /* DMA peripheral configuration */  
-  DMA_InitStructure.DMA_BufferSize = 128;
+  DMA_InitStructure.DMA_BufferSize = 128 * 2;
   DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;  
   DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
   DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;

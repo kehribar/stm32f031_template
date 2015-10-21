@@ -23,7 +23,12 @@ int main(void)
   while(1)
   {
     xprintf("> Counter: %d\r\n",cnt++);    
-    _delay_nop(100);   
+    
+    _delay_ms(50);
+    digitalWrite(B,1,HIGH);
+
+    _delay_ms(50);
+    digitalWrite(B,1,LOW);  
   }
 
   return 0;
@@ -33,6 +38,10 @@ static void hardware_init()
 {
   /* init systick and delay system */
   systick_init(SYSTICK_1MS);  
+
+  /* Init LED pin */
+  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
+  pinMode(B,1,OUTPUT);  
 
   /* init uart and enable xprintf library */
   usart1_init(115200);

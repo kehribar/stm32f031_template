@@ -11,7 +11,13 @@
 void usart1_sendChar(const uint8_t ch)
 {
   while(USART_GetFlagStatus(USART1, USART_FLAG_TC) != SET);
-  USART_SendData(USART1, ch);  
+  USART_SendData(USART1, ch);
+}
+
+/*---------------------------------------------------------------------------*/
+uint8_t usart1_readByte()
+{
+  return (uint8_t)(USART1->RDR & (uint8_t)0x0FF);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -37,5 +43,12 @@ void usart1_init(const uint32_t baud)
   USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;  
   USART_Init(USART1, &USART_InitStructure);    
   
-  USART_Cmd(USART1, ENABLE);
+  USART_Cmd(USART1, ENABLE);  
+}
+
+/*---------------------------------------------------------------------------*/
+void usart1_enableReceiveISR()
+{
+  USART_ITConfig(USART1, USART_IT_RXNE, SET);
+  NVIC_EnableIRQ(USART1_IRQn);
 }

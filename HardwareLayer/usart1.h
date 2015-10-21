@@ -11,5 +11,11 @@
 /* blocking 'sendChar' method for usart1 */
 void usart1_sendChar(const uint8_t ch);
 
+/* ... */
+uint8_t usart1_readByte();
+
 /* basic initialisation for usart1 */
 void usart1_init(const uint32_t baud);
+
+/* ... */
+void usart1_enableReceiveISR();

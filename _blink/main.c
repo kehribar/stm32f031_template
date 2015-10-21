@@ -16,14 +16,11 @@ int main(void)
 
   while(1)
   {
-    if(digitalRead(A,4) == 0)
-    {
-      _delay_ms(50);
-      digitalWrite(A,5,HIGH);
+      _delay_ms(250);
+      digitalWrite(B,1,HIGH);
 
-      _delay_ms(50);
-      digitalWrite(A,5,LOW);
-    }
+      _delay_ms(250);
+      digitalWrite(B,1,LOW);  
   }
 
   return 0;
@@ -33,13 +30,9 @@ static void hardware_init()
 {
   systick_init(SYSTICK_1MS);
 
-  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
+  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
 
-  pinMode(A,5,OUTPUT);
-  digitalWrite(A,5,LOW);
-
-  pinMode(A,4,INPUT);
-  setInternalPullup(A,4);
+  pinMode(B,1,OUTPUT);  
 
   _delay_ms(10);
 }
