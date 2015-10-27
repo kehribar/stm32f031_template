@@ -12,20 +12,20 @@
 
 typedef struct t_envelope {
   uint8_t state;
-  uint16_t fallRate;
-  uint16_t sustainCounter;
   uint16_t envelopeCounter;
 } t_envelope;
 
 typedef struct t_envSetting {
   uint16_t attackRate;
   uint16_t decayRate;
-  uint16_t sustainRate;
+  uint16_t sustainLevel;
   uint16_t releaseRate;
 } t_envSetting;
 
 typedef struct t_lfo {
-  uint16_t phaseCounter;
+  uint16_t phaseCounter_left;
+  uint16_t phaseCounter_right;
+  uint16_t stereoPanning_offset;
   uint16_t freq;
   int32_t outSignal;
   uint16_t depth;

@@ -18,17 +18,25 @@
 #include "digital.h"
 #include "ringBuffer.h"
 #include "xprintf.h"
+#include "soft_uart.h"
 #include "systick_delay.h"
 /*---------------------------------------------------------------------------*/
 #define MAX_VOICE 14
-struct t_key voice[MAX_VOICE];
-/*---------------------------------------------------------------------------*/
 #define BURST_SIZE 16
-int32_t I2S_Buffer_Tx[BURST_SIZE * 2 * 2]; // 2 x 2channels worth of data
+#define LOWPASS_ORDER 3
 /*---------------------------------------------------------------------------*/
+t_lfo outputLfo;
 uint8_t midibuf[3];
+int16_t g_cutoff = 0;
+int16_t g_resonance = 0;
 RingBuffer_t midi_ringBuf;
-uint8_t midi_ringBufData[128];
+t_envSetting ampEnvSetting;
+t_envSetting modEnvSetting;
+int16_t g_modulationIndex = 1;
+struct t_key voice[MAX_VOICE];
+uint8_t midi_ringBufData[1024];
+int32_t g_history[BURST_SIZE][LOWPASS_ORDER+1];
+int32_t I2S_Buffer_Tx[BURST_SIZE * 2 * 2]; // 2 x 2channels worth of data
 /*---------------------------------------------------------------------------*/
 static void hardware_init();
 static inline void check_notes();
@@ -40,29 +48,13 @@ static void midi_noteOnMessageHandler(const uint8_t note,const uint8_t velocity)
 static inline int32_t fm_iterate(t_key* key, const int16_t depth_mod, const uint16_t depth_amp);
 static int16_t envelope_iterate(t_envelope* env, const t_envSetting* setting, const uint16_t maxVal);
 /*---------------------------------------------------------------------------*/
-t_lfo outputLfo;
-t_envSetting ampEnvSetting;
-t_envSetting modEnvSetting;
-/*---------------------------------------------------------------------------*/
 int main(void)
 { 
-  uint8_t i;
   int32_t* const Buffer_A = &(I2S_Buffer_Tx[0]);
   int32_t* const Buffer_B = &(I2S_Buffer_Tx[BURST_SIZE * 2]);
 
-  hardware_init();      
-
-  xprintf("> Hello World\r\n");
-
-  ampEnvSetting.attackRate = 10000;
-  modEnvSetting.attackRate = 2048;
-  
-  ampEnvSetting.sustainRate = 500;
-  modEnvSetting.sustainRate = 500;
-
-  outputLfo.depth = 0;
-  outputLfo.freq = 7;
-
+  hardware_init();
+ 
   while(1)
   { 
     uint32_t tmpreg = DMA1->ISR;    
@@ -96,47 +88,52 @@ static int16_t envelope_iterate(t_envelope* env, const t_envSetting* setting, co
 {  
   int16_t output;
 
-  if(env->state == 0) /* idle */
+  if(env->state == 0) /* Idle */
   {        
     env->envelopeCounter = 0;   
   }    
-  else if(env->state == 1) /* attack */
+  else if(env->state == 1) /* Attack */
   {    
     env->envelopeCounter += setting->attackRate;
     
     /* Check overflow! */
     if(env->envelopeCounter < setting->attackRate)
     {
-      env->state = 2;                   
-      env->sustainCounter = 0;
+      env->state = 2;                         
       env->envelopeCounter = 0xFFFF;
     }    
   }
-  else if(env->state == 2) /* sustain */
+  else if(env->state == 2) /* Decay */
   {    
-    env->sustainCounter += setting->sustainRate;
-    
-    /* Detect overflow ... */
-    if(env->sustainCounter < setting->sustainRate)
+    /* Detect sustain point */
+    if(env->envelopeCounter < (setting->sustainLevel + setting->decayRate))
     {          
       env->state = 3;      
-      env->envelopeCounter = 0xFFFF;
-    }    
+      env->envelopeCounter = setting->sustainLevel;
+    }
+    else
+    {
+      env->envelopeCounter -= setting->decayRate;     
+    }
   }
-  else if(env->state == 3) /* decay */
+  else if(env->state == 3) /* Sustain */
+  {    
+    /* Wait for note-off event ... */  
+  }
+  else if(env->state == 4) /* Release */
   {    
     /* Detect underflow ... */
-    if(env->envelopeCounter < env->fallRate)
+    if(env->envelopeCounter < setting->releaseRate)
     {          
       env->state = 0;      
       env->envelopeCounter = 0;
     }
     else
     {
-      env->envelopeCounter -= env->fallRate;     
+      env->envelopeCounter -= setting->releaseRate;     
     }
   }
-  else
+  else /* What? */
   {    
     env->state = 0;      
     env->envelopeCounter = 0;
@@ -184,13 +181,13 @@ static inline void check_notes()
     /* Sliding buffer ... */
     midibuf[0] = midibuf[1];
     midibuf[1] = midibuf[2];
-    midibuf[2] = data;
+    midibuf[2] = data;    
 
     if((midibuf[1] < 128) && (midibuf[2] < 128))
-    {      
+    {                  
       /* Note on */
       if((midibuf[0] & 0xF0) == 0x90)
-      {
+      {        
         /* If velocity is zero, treat it like 'note off' */
         if(midibuf[2] == 0x00)
         {
@@ -211,36 +208,40 @@ static inline void check_notes()
       {
         midi_controlMessageHandler(midibuf[1],midibuf[2]);            
       }
+      else
+      {     
+        // ...        
+      }
+    }    
+    else
+    {
+      // ...
     }
-  } 
+  }  
 
-  /* scan voices */
+  /* Scan voices */
   for(i=0;i<MAX_VOICE;++i)
   {         
-    /* key down */
+    /* Key down */
     if((voice[i].noteState == NOTE_TRIGGER) && (voice[i].noteState_d != NOTE_TRIGGER))
     {
       voice[i].phaseCounterMod = 0;
-      voice[i].phaseCounterTone = 0;
+      voice[i].phaseCounterTone = 0;      
 
-      voice[i].maxModulation = voice[i].keyVelocity >> 9;
-
-      voice[i].ampEnvelope.state = 1;
-      voice[i].ampEnvelope.fallRate = 10;
+      /* Attack state */
+      voice[i].ampEnvelope.state = 1;      
+      voice[i].modEnvelope.state = 1;      
       voice[i].ampEnvelope.envelopeCounter= 0;
-
-      voice[i].modEnvelope.state = 1;
-      voice[i].modEnvelope.fallRate = 20;
       voice[i].modEnvelope.envelopeCounter = 0;
+
+      voice[i].maxModulation = voice[i].keyVelocity >> 8;
     }
-    /* key up */
+    /* Key up */
     else if((voice[i].noteState != NOTE_TRIGGER) && (voice[i].noteState_d == NOTE_TRIGGER))
     {
-      voice[i].ampEnvelope.state = 3;      
-      voice[i].ampEnvelope.fallRate = 50;
-
-      voice[i].modEnvelope.state = 3;      
-      voice[i].modEnvelope.fallRate = 100;
+      /* Release state */
+      voice[i].ampEnvelope.state = 4;      
+      voice[i].modEnvelope.state = 4;      
     }
 
     voice[i].noteState_d = voice[i].noteState;
@@ -250,13 +251,9 @@ static inline void check_notes()
 static inline void synth_loop(int32_t* const buf)
 {
   uint8_t i;
-  uint8_t k;    
-  int32_t* buf_p;
-  int32_t* out_p;
-  int32_t outputBuffer[BURST_SIZE];
-
-  buf_p = buf;
-  out_p = outputBuffer;
+  uint8_t k;
+  int32_t* buf_p = buf;    
+  int32_t outputBuffer[BURST_SIZE];  
 
   check_notes();
 
@@ -297,12 +294,40 @@ static inline void synth_loop(int32_t* const buf)
 
   /* Put the values inside the DMA buffer for later */
   for(i=0;i<BURST_SIZE;i++)
-  {
-    // TODO: put LFO here
-    // TODO: put lowpass here
+  {    
+    int32_t left;
+    int32_t input;
+    int32_t right;
+    int32_t inp_mod;
+    int32_t lfoValue;          
 
-    *buf_p++ = convertDataForDma_24b(*out_p * 32); // left
-    *buf_p++ = convertDataForDma_24b(*out_p++ * 32); // right
+    /* Run lowpass */
+    for(k=0;k<LOWPASS_ORDER;k++) 
+    {
+      g_history[i][k] = S16S16MulShift8(g_history[i][k],g_cutoff) + S16S16MulShift8(g_history[i][k+1],255-g_cutoff);
+    }
+    g_history[i][LOWPASS_ORDER] = outputBuffer[i] - S16S16MulShift8(g_history[i][0],g_resonance);
+    outputBuffer[i] = g_history[i][0];    
+
+    input = outputBuffer[i];
+
+    /* Psuedo stereo panning effect using an LFO with phase counters with slight offsets */
+    outputLfo.phaseCounter_left += outputLfo.freq;
+    outputLfo.phaseCounter_right = outputLfo.phaseCounter_left + outputLfo.stereoPanning_offset;
+
+    /* Right channel output */
+    lfoValue = (sin_lut[outputLfo.phaseCounter_right >> 6] + 32768) >> 8;
+    inp_mod = S16S16MulShift8(input,lfoValue);      
+    right = S16S16MulShift4(inp_mod,outputLfo.depth) + S16S16MulShift4(input,255-outputLfo.depth);
+
+    /* Left channel output */
+    lfoValue = (sin_lut[outputLfo.phaseCounter_left >> 6] + 32768) >> 8;
+    inp_mod = S16S16MulShift8(input,lfoValue);
+    left = S16S16MulShift4(inp_mod,outputLfo.depth) + S16S16MulShift4(input,255-outputLfo.depth);
+
+    /* Put them on the DMA train */
+    *buf_p++ = convertDataForDma_24b(left);
+    *buf_p++ = convertDataForDma_24b(right);
   } 
 }
 /*---------------------------------------------------------------------------*/
@@ -318,15 +343,94 @@ static inline int32_t convertDataForDma_24b(const int32_t data)
 /*---------------------------------------------------------------------------*/
 void USART1_IRQHandler()
 {
+  USART1->ICR = 0xFFFFFFFF;
   uint8_t data = usart1_readByte();
   if(!RingBuffer_IsFull(&midi_ringBuf))
   {
-    RingBuffer_Insert(&midi_ringBuf,data);
+    RingBuffer_Insert(&midi_ringBuf,data);    
+  }  
+}
+/*---------------------------------------------------------------------------*/
+static void midi_controlMessageHandler(const uint8_t id, const uint8_t data)
+{
+  switch(id)
+  {    
+    case 61:
+    {
+      g_cutoff = data * 2;
+      break;
+    }
+    case 62:
+    {
+      g_resonance = data * 2;
+      break;
+    }
+    case 63:
+    {
+      ampEnvSetting.attackRate = data * 16;
+      break;
+    }
+    case 102:
+    {
+      modEnvSetting.attackRate = data * 16;
+      break;
+    }
+    case 103:
+    {
+      g_modulationIndex = data * 16;
+      break;
+    }
+    default:
+    {
+      break;
+    }
   }
+}
+/*---------------------------------------------------------------------------*/
+static void midi_noteOnMessageHandler(const uint8_t note,const uint8_t velocity)
+{
+  /* Lokup table has limited range */
+  if((note > 20) && (note < 109))
+  {
+    uint8_t k;
+
+    /* Search for an silent empty slot */
+    for (k = 0; k < MAX_VOICE; ++k)
+    {
+      if((voice[k].lastnote == 0) && (voice[k].noteState == NOTE_SILENT))
+      {               
+        voice[k].freqTone = noteToFreq[note - 21];
+        voice[k].freqMod = S16S16MulShift8(voice[k].freqTone, g_modulationIndex);
+        voice[k].lastnote = note;
+        voice[k].keyVelocity = velocity * 512;
+        voice[k].noteState = NOTE_TRIGGER; 
+        return;         
+      }
+    }    
+  }  
+}
+/*---------------------------------------------------------------------------*/
+static void midi_noteOffMessageHandler(const uint8_t note)
+{
+  uint8_t k;
+
+  /* Search for previously triggered key */
+  for (k = 0; k < MAX_VOICE; ++k)
+  {
+    if(voice[k].lastnote == note)
+    {
+      voice[k].lastnote = 0;
+      voice[k].noteState = NOTE_DECAY;             
+      break;
+    }
+  }          
 }
 /*---------------------------------------------------------------------------*/
 static void hardware_init()
 {  
+  uint8_t i;
+  uint8_t k;
+
   I2S_InitTypeDef I2S_InitStructure;
   DMA_InitTypeDef DMA_InitStructure;
 
@@ -340,10 +444,10 @@ static void hardware_init()
 
   /* Debug pins ... */
   pinMode(A,9,OUTPUT);
-  digitalWrite(A,9,LOW);
+  digitalWrite(A,9,HIGH);
 
   pinMode(A,0,OUTPUT);
-  digitalWrite(A,0,LOW);
+  digitalWrite(A,0,HIGH);
 
   /* I2S pin: Word select */
   pinMode(A,4,ALTFUNC);
@@ -400,50 +504,36 @@ static void hardware_init()
   /* Small delay for general stabilisation */
   _delay_ms(100);
 
+  for(i=0;i<BURST_SIZE;i++)
+  {    
+    for(k=0;k<LOWPASS_ORDER+1;k++) 
+    {
+      g_history[i][k] = 0;
+    }
+  }
+  
+  g_modulationIndex = 256;
+
+  ampEnvSetting.attackRate = 2000;
+  modEnvSetting.attackRate = 5000;
+
+  ampEnvSetting.decayRate = 20;
+  modEnvSetting.decayRate = 20;
+
+  ampEnvSetting.sustainLevel = 4500;
+  modEnvSetting.sustainLevel = 4500;
+
+  ampEnvSetting.releaseRate = 50;
+  modEnvSetting.releaseRate = 50;
+    
+  outputLfo.phaseCounter_left = 0;
+  outputLfo.phaseCounter_right = 0;  
+  outputLfo.stereoPanning_offset = 0x8000;
+  
+  outputLfo.freq = 3;
+  outputLfo.depth = 150;
+
+  xfprintf(dbg_sendChar,"> Hello World\r\n");
   RingBuffer_InitBuffer(&midi_ringBuf, midi_ringBufData, sizeof(midi_ringBufData));
-}
-/*---------------------------------------------------------------------------*/
-static void midi_controlMessageHandler(const uint8_t id, const uint8_t data)
-{
-  // ... 
-}
-/*---------------------------------------------------------------------------*/
-static void midi_noteOnMessageHandler(const uint8_t note,const uint8_t velocity)
-{
-  /* Lokup table has limited range */
-  if((note > 20) && (note < 109))
-  {
-    uint8_t k;
-
-    /* Search for an silent empty slot */
-    for (k = 0; k < MAX_VOICE; ++k)
-    {
-      if((voice[k].lastnote == 0) && (voice[k].noteState == NOTE_SILENT))
-      {               
-        voice[k].freqTone = noteToFreq[note - 21];
-        voice[k].freqMod = ((voice[k].freqTone) * 1) + 2;
-        voice[k].lastnote = note;
-        voice[k].keyVelocity = velocity * 512;
-        voice[k].noteState = NOTE_TRIGGER; 
-        return;         
-      }
-    }
-  }  
-}
-/*---------------------------------------------------------------------------*/
-static void midi_noteOffMessageHandler(const uint8_t note)
-{
-  uint8_t k;
-
-  /* Search for previously triggered key */
-  for (k = 0; k < MAX_VOICE; ++k)
-  {
-    if(voice[k].lastnote == note)
-    {
-      voice[k].lastnote = 0;
-      voice[k].noteState = NOTE_DECAY;             
-      break;
-    }
-  }          
 }
 /*---------------------------------------------------------------------------*/
