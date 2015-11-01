@@ -21,17 +21,23 @@
 #include "soft_uart.h"
 #include "systick_delay.h"
 /*---------------------------------------------------------------------------*/
-#define MAX_VOICE 14
+#define MAX_VOICE 10 
 #define BURST_SIZE 16
 #define LOWPASS_ORDER 3
 /*---------------------------------------------------------------------------*/
 t_lfo outputLfo;
-uint8_t midibuf[3];
+uint8_t midibuf[2];
+uint8_t argInd = 0;
 int16_t g_cutoff = 0;
 int16_t g_resonance = 0;
 RingBuffer_t midi_ringBuf;
+uint8_t runningCommand = 0;
+uint16_t g_modFreq;
+uint16_t g_maxModulation;
+t_envSetting fmEnvSetting;
 t_envSetting ampEnvSetting;
 t_envSetting modEnvSetting;
+int16_t * soundLut = sin_lut;
 int16_t g_modulationIndex = 1;
 struct t_key voice[MAX_VOICE];
 uint8_t midi_ringBufData[1024];
@@ -45,8 +51,8 @@ static void midi_noteOffMessageHandler(const uint8_t note);
 static inline int32_t convertDataForDma_24b(const int32_t data);
 static void midi_controlMessageHandler(const uint8_t id, const uint8_t data);
 static void midi_noteOnMessageHandler(const uint8_t note,const uint8_t velocity);
-static inline int32_t fm_iterate(t_key* key, const int16_t depth_mod, const uint16_t depth_amp);
 static int16_t envelope_iterate(t_envelope* env, const t_envSetting* setting, const uint16_t maxVal);
+static int32_t fm_iterate(t_key* key, const int16_t depth_fm, const uint16_t depth_amp, const uint16_t depth_mod);
 /*---------------------------------------------------------------------------*/
 int main(void)
 { 
@@ -144,21 +150,26 @@ static int16_t envelope_iterate(t_envelope* env, const t_envSetting* setting, co
   return output;  
 }
 /*---------------------------------------------------------------------------*/
-static inline int32_t fm_iterate(t_key* key, const int16_t depth_mod, const uint16_t depth_amp)
+static inline int32_t fm_iterate(t_key* key, const int16_t depth_fm, const uint16_t depth_amp, const uint16_t depth_mod)
 { 
   int16_t signal_mod;
+  int16_t signal_fm;
   uint16_t signal_phase;
-  
-  key->phaseCounterMod += key->freqMod;
+    
+  key->phaseCounterFm += key->freqMod;
   key->phaseCounterTone += key->freqTone;  
 
-  signal_mod = sin_lut[key->phaseCounterMod >> 6];
-  signal_mod = S16S16MulShift8(signal_mod, depth_mod);
+  signal_fm = sin_lut[key->phaseCounterFm >> 6];
+  signal_fm = S16S16MulShift8(signal_fm, depth_fm);
 
   signal_phase = key->phaseCounterTone;    
-  signal_phase += signal_mod;  
+  signal_phase += signal_fm;  
+
+  key->phaseCounterMod += g_modFreq;
+  signal_mod = sin_lut[key->phaseCounterMod >> 6];
+  signal_phase += S16S16MulShift8(signal_mod, depth_mod);
   
-  return S16S16MulShift16(sin_lut[signal_phase >> 6], depth_amp);    
+  return S16S16MulShift16(soundLut[signal_phase >> 6], depth_amp);    
 }
 /*---------------------------------------------------------------------------*/
 static inline void check_notes()
@@ -177,46 +188,44 @@ static inline void check_notes()
       }    
       data = RingBuffer_Remove(&midi_ringBuf);
     __enable_irq();
-
-    /* Sliding buffer ... */
-    midibuf[0] = midibuf[1];
-    midibuf[1] = midibuf[2];
-    midibuf[2] = data;    
-
-    if((midibuf[1] < 128) && (midibuf[2] < 128))
-    {                  
-      /* Note on */
-      if((midibuf[0] & 0xF0) == 0x90)
-      {        
-        /* If velocity is zero, treat it like 'note off' */
-        if(midibuf[2] == 0x00)
-        {
-          midi_noteOffMessageHandler(midibuf[1]);
-        }
-        else
-        {
-          midi_noteOnMessageHandler(midibuf[1],midibuf[2]);
-        }
-      }
-      /* Note off */
-      else if((midibuf[0] & 0xF0) == 0x80)
-      {
-        midi_noteOffMessageHandler(midibuf[1]);
-      }
-      /* Control message */
-      else if((midibuf[0] & 0xF0) == 0xB0)
-      {
-        midi_controlMessageHandler(midibuf[1],midibuf[2]);            
-      }
-      else
-      {     
-        // ...        
-      }
-    }    
+      
+    if(data & 0x80)
+    {
+      argInd = 0;
+      runningCommand = data;
+    }
     else
     {
-      // ...
-    }
+      midibuf[argInd++] = data;
+      if(argInd == 2)
+      {               
+        argInd = 0;
+
+        /* Note on */
+        if((runningCommand & 0xF0) == 0x90)
+        {                
+          /* If velocity is zero, treat it like 'note off' */
+          if(midibuf[1] == 0x00)
+          {
+            midi_noteOffMessageHandler(midibuf[0]);
+          }
+          else
+          {
+            midi_noteOnMessageHandler(midibuf[0],midibuf[1]);
+          }
+        }
+        /* Note off */
+        else if((runningCommand & 0xF0) == 0x80)
+        {        
+          midi_noteOffMessageHandler(midibuf[0]);
+        }
+        /* Control message */
+        else if((runningCommand & 0xF0) == 0xB0)
+        {
+          midi_controlMessageHandler(midibuf[0],midibuf[1]);            
+        }   
+      }          
+    }    
   }  
 
   /* Scan voices */
@@ -225,21 +234,22 @@ static inline void check_notes()
     /* Key down */
     if((voice[i].noteState == NOTE_TRIGGER) && (voice[i].noteState_d != NOTE_TRIGGER))
     {
-      voice[i].phaseCounterMod = 0;
-      voice[i].phaseCounterTone = 0;      
+      voice[i].phaseCounterFm = 0;  
+      voice[i].phaseCounterMod = 0;      
+      voice[i].phaseCounterTone = 0;        
 
       /* Attack state */
+      voice[i].fmEnvelope.state = 1;            
       voice[i].ampEnvelope.state = 1;      
-      voice[i].modEnvelope.state = 1;      
+      voice[i].modEnvelope.state = 1;            
       voice[i].ampEnvelope.envelopeCounter= 0;
-      voice[i].modEnvelope.envelopeCounter = 0;
-
-      voice[i].maxModulation = voice[i].keyVelocity >> 8;
+      voice[i].modEnvelope.envelopeCounter = 0;      
     }
     /* Key up */
     else if((voice[i].noteState != NOTE_TRIGGER) && (voice[i].noteState_d == NOTE_TRIGGER))
     {
       /* Release state */
+      voice[i].fmEnvelope.state = 4;      
       voice[i].ampEnvelope.state = 4;      
       voice[i].modEnvelope.state = 4;      
     }
@@ -259,8 +269,9 @@ static inline void synth_loop(int32_t* const buf)
 
   /* Deal with the initial voice first */
   {          
-    int16_t mod_amp = envelope_iterate(&(voice[0].modEnvelope),&modEnvSetting,voice[0].maxModulation);  
-    int16_t sig_amp = envelope_iterate(&(voice[0].ampEnvelope),&ampEnvSetting,voice[0].keyVelocity);  
+    int16_t fm_amp = envelope_iterate(&(voice[0].fmEnvelope),&fmEnvSetting,voice[0].maxModulation);    
+    int16_t sig_amp = envelope_iterate(&(voice[0].ampEnvelope),&ampEnvSetting,voice[0].keyVelocity);
+    int16_t mod_amp = envelope_iterate(&(voice[0].modEnvelope),&modEnvSetting,g_maxModulation);  
 
     if(sig_amp == 0)
     {
@@ -270,15 +281,16 @@ static inline void synth_loop(int32_t* const buf)
     
     for(i=0;i<BURST_SIZE;i++)
     {              
-      outputBuffer[i] = fm_iterate(&(voice[0]),mod_amp,sig_amp);
+      outputBuffer[i] = fm_iterate(&(voice[0]),fm_amp,sig_amp,mod_amp);
     }
   }
   
   /* Scan through other voices */
   for(k=1;k<MAX_VOICE;k++) 
   {          
-    int16_t mod_amp = envelope_iterate(&(voice[k].modEnvelope),&modEnvSetting,voice[k].maxModulation);  
-    int16_t sig_amp = envelope_iterate(&(voice[k].ampEnvelope),&ampEnvSetting,voice[k].keyVelocity);    
+    int16_t fm_amp = envelope_iterate(&(voice[k].fmEnvelope),&fmEnvSetting,voice[k].maxModulation);   
+    int16_t sig_amp = envelope_iterate(&(voice[k].ampEnvelope),&ampEnvSetting,voice[k].keyVelocity); 
+    int16_t mod_amp = envelope_iterate(&(voice[k].modEnvelope),&modEnvSetting,g_maxModulation);  
 
     if(sig_amp == 0)
     {
@@ -288,7 +300,7 @@ static inline void synth_loop(int32_t* const buf)
 
     for(i=0;i<BURST_SIZE;i++)
     {      
-      outputBuffer[i] += fm_iterate(&(voice[k]),mod_amp,sig_amp);
+      outputBuffer[i] += fm_iterate(&(voice[k]),fm_amp,sig_amp,mod_amp);
     }
   }   
 
@@ -345,46 +357,18 @@ void USART1_IRQHandler()
 {
   USART1->ICR = 0xFFFFFFFF;
   uint8_t data = usart1_readByte();
-  if(!RingBuffer_IsFull(&midi_ringBuf))
+  if((data != 0xF8) && (data != 0xFE))
   {
-    RingBuffer_Insert(&midi_ringBuf,data);    
+    if(!RingBuffer_IsFull(&midi_ringBuf))
+    {
+      RingBuffer_Insert(&midi_ringBuf,data);    
+    }  
   }  
 }
 /*---------------------------------------------------------------------------*/
 static void midi_controlMessageHandler(const uint8_t id, const uint8_t data)
 {
-  switch(id)
-  {    
-    case 61:
-    {
-      g_cutoff = data * 2;
-      break;
-    }
-    case 62:
-    {
-      g_resonance = data * 2;
-      break;
-    }
-    case 63:
-    {
-      ampEnvSetting.attackRate = data * 16;
-      break;
-    }
-    case 102:
-    {
-      modEnvSetting.attackRate = data * 16;
-      break;
-    }
-    case 103:
-    {
-      g_modulationIndex = data * 16;
-      break;
-    }
-    default:
-    {
-      break;
-    }
-  }
+  
 }
 /*---------------------------------------------------------------------------*/
 static void midi_noteOnMessageHandler(const uint8_t note,const uint8_t velocity)
@@ -400,9 +384,10 @@ static void midi_noteOnMessageHandler(const uint8_t note,const uint8_t velocity)
       if((voice[k].lastnote == 0) && (voice[k].noteState == NOTE_SILENT))
       {               
         voice[k].freqTone = noteToFreq[note - 21];
-        voice[k].freqMod = S16S16MulShift8(voice[k].freqTone, g_modulationIndex);
+        voice[k].freqMod = S16S16MulShift8(voice[k].freqTone, g_modulationIndex);        
         voice[k].lastnote = note;
-        voice[k].keyVelocity = velocity * 512;
+        voice[k].keyVelocity = velocity * 512; // Change this to exponential scale?
+        voice[k].maxModulation = (voice[k].keyVelocity >> 7); // Change this to exponential scale?        
         voice[k].noteState = NOTE_TRIGGER; 
         return;         
       }
@@ -438,7 +423,7 @@ static void hardware_init()
   systick_init(SYSTICK_1MS);  
 
   /* init uart and enable xprintf library */
-  usart1_init(115200);
+  usart1_init(31250);
   xdev_out(usart1_sendChar);
   usart1_enableReceiveISR();
 
@@ -504,6 +489,7 @@ static void hardware_init()
   /* Small delay for general stabilisation */
   _delay_ms(100);
 
+  /* Init the lowpass filter buffer */
   for(i=0;i<BURST_SIZE;i++)
   {    
     for(k=0;k<LOWPASS_ORDER+1;k++) 
@@ -511,27 +497,42 @@ static void hardware_init()
       g_history[i][k] = 0;
     }
   }
-  
-  g_modulationIndex = 256;
 
-  ampEnvSetting.attackRate = 2000;
-  modEnvSetting.attackRate = 5000;
+  /* FM modulation freq vs Signal frequency ratio. Will get divided to 256 later */
+  g_modulationIndex = 128;
 
-  ampEnvSetting.decayRate = 20;
-  modEnvSetting.decayRate = 20;
+  /* Output signal level amplitude envelope */
+  ampEnvSetting.attackRate = 4096;  
+  ampEnvSetting.decayRate = 8;
+  ampEnvSetting.sustainLevel = 0;
+  ampEnvSetting.releaseRate = 64;  
 
-  ampEnvSetting.sustainLevel = 4500;
-  modEnvSetting.sustainLevel = 4500;
+  /* Timbre changing frequency modulation level envelope */
+  fmEnvSetting.attackRate = 4096;
+  fmEnvSetting.decayRate = 8;
+  fmEnvSetting.sustainLevel = 0;
+  fmEnvSetting.releaseRate = 64;
 
-  ampEnvSetting.releaseRate = 50;
-  modEnvSetting.releaseRate = 50;
+  /* LFO rate frequency modulation envlope */
+  g_modFreq = 5;
+  g_maxModulation = 64;
+  modEnvSetting.attackRate = 16;
+  modEnvSetting.decayRate = 32;
+  modEnvSetting.sustainLevel = 0;
+  modEnvSetting.releaseRate = 10000;
     
+  /* Output signal panning and 'tremolo' effect */
+  outputLfo.freq = 3;
+  outputLfo.depth = 100;
   outputLfo.phaseCounter_left = 0;
   outputLfo.phaseCounter_right = 0;  
-  outputLfo.stereoPanning_offset = 0x8000;
-  
-  outputLfo.freq = 3;
-  outputLfo.depth = 150;
+  outputLfo.stereoPanning_offset = 0x8000;    
+
+  /* Final output stage low pass parameters */
+  g_cutoff = 5;  
+  g_resonance = 70;
+
+  soundLut = sin_lut;
 
   xfprintf(dbg_sendChar,"> Hello World\r\n");
   RingBuffer_InitBuffer(&midi_ringBuf, midi_ringBufData, sizeof(midi_ringBufData));

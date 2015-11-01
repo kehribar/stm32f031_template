@@ -40,7 +40,9 @@ typedef struct t_key {
   uint16_t freqTone;
   uint16_t freqMod;  
   uint16_t phaseCounterTone;  
-  uint16_t phaseCounterMod;     
+  uint16_t phaseCounterMod;
+  uint16_t phaseCounterFm;     
+  t_envelope fmEnvelope;
   t_envelope modEnvelope;
-  t_envelope ampEnvelope;
+  t_envelope ampEnvelope;  
 } t_key;
