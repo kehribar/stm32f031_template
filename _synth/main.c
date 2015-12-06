@@ -21,15 +21,13 @@
 #include "soft_uart.h"
 #include "systick_delay.h"
 /*---------------------------------------------------------------------------*/
-#define MAX_VOICE 10 
+#define MAX_VOICE 8 
 #define BURST_SIZE 16
 #define LOWPASS_ORDER 3
 /*---------------------------------------------------------------------------*/
 t_lfo outputLfo;
 uint8_t midibuf[2];
 uint8_t argInd = 0;
-int16_t g_cutoff = 0;
-int16_t g_resonance = 0;
 RingBuffer_t midi_ringBuf;
 uint8_t runningCommand = 0;
 uint16_t g_modFreq;
@@ -37,11 +35,10 @@ uint16_t g_maxModulation;
 t_envSetting fmEnvSetting;
 t_envSetting ampEnvSetting;
 t_envSetting modEnvSetting;
-int16_t * soundLut = sin_lut;
 int16_t g_modulationIndex = 1;
+int16_t g_modulationOffset = 0;
 struct t_key voice[MAX_VOICE];
 uint8_t midi_ringBufData[1024];
-int32_t g_history[BURST_SIZE][LOWPASS_ORDER+1];
 int32_t I2S_Buffer_Tx[BURST_SIZE * 2 * 2]; // 2 x 2channels worth of data
 /*---------------------------------------------------------------------------*/
 static void hardware_init();
@@ -157,6 +154,8 @@ static inline int32_t fm_iterate(t_key* key, const int16_t depth_fm, const uint1
   uint16_t signal_phase;
     
   key->phaseCounterFm += key->freqMod;
+  key->phaseCounterFm += g_modulationOffset;
+
   key->phaseCounterTone += key->freqTone;  
 
   signal_fm = sin_lut[key->phaseCounterFm >> 6];
@@ -169,7 +168,7 @@ static inline int32_t fm_iterate(t_key* key, const int16_t depth_fm, const uint1
   signal_mod = sin_lut[key->phaseCounterMod >> 6];
   signal_phase += S16S16MulShift8(signal_mod, depth_mod);
   
-  return S16S16MulShift16(soundLut[signal_phase >> 6], depth_amp);    
+  return S16S16MulShift16(sin_lut[signal_phase >> 6], depth_amp);    
 }
 /*---------------------------------------------------------------------------*/
 static inline void check_notes()
@@ -242,6 +241,7 @@ static inline void check_notes()
       voice[i].fmEnvelope.state = 1;            
       voice[i].ampEnvelope.state = 1;      
       voice[i].modEnvelope.state = 1;            
+      voice[i].fmEnvelope.envelopeCounter= 0;
       voice[i].ampEnvelope.envelopeCounter= 0;
       voice[i].modEnvelope.envelopeCounter = 0;      
     }
@@ -313,14 +313,6 @@ static inline void synth_loop(int32_t* const buf)
     int32_t inp_mod;
     int32_t lfoValue;          
 
-    /* Run lowpass */
-    for(k=0;k<LOWPASS_ORDER;k++) 
-    {
-      g_history[i][k] = S16S16MulShift8(g_history[i][k],g_cutoff) + S16S16MulShift8(g_history[i][k+1],255-g_cutoff);
-    }
-    g_history[i][LOWPASS_ORDER] = outputBuffer[i] - S16S16MulShift8(g_history[i][0],g_resonance);
-    outputBuffer[i] = g_history[i][0];    
-
     input = outputBuffer[i];
 
     /* Psuedo stereo panning effect using an LFO with phase counters with slight offsets */
@@ -338,8 +330,8 @@ static inline void synth_loop(int32_t* const buf)
     left = S16S16MulShift4(inp_mod,outputLfo.depth) + S16S16MulShift4(input,255-outputLfo.depth);
 
     /* Put them on the DMA train */
-    *buf_p++ = convertDataForDma_24b(left);
-    *buf_p++ = convertDataForDma_24b(right);
+    *buf_p++ = convertDataForDma_24b(left * 2);
+    *buf_p++ = convertDataForDma_24b(right * 2);
   } 
 }
 /*---------------------------------------------------------------------------*/
@@ -386,8 +378,8 @@ static void midi_noteOnMessageHandler(const uint8_t note,const uint8_t velocity)
         voice[k].freqTone = noteToFreq[note - 21];
         voice[k].freqMod = S16S16MulShift8(voice[k].freqTone, g_modulationIndex);        
         voice[k].lastnote = note;
-        voice[k].keyVelocity = velocity * 512; // Change this to exponential scale?
-        voice[k].maxModulation = (voice[k].keyVelocity >> 7); // Change this to exponential scale?        
+        voice[k].keyVelocity = log_lut[velocity];        
+        voice[k].maxModulation = (voice[k].keyVelocity >> 6);
         voice[k].noteState = NOTE_TRIGGER; 
         return;         
       }
@@ -489,50 +481,36 @@ static void hardware_init()
   /* Small delay for general stabilisation */
   _delay_ms(100);
 
-  /* Init the lowpass filter buffer */
-  for(i=0;i<BURST_SIZE;i++)
-  {    
-    for(k=0;k<LOWPASS_ORDER+1;k++) 
-    {
-      g_history[i][k] = 0;
-    }
-  }
-
   /* FM modulation freq vs Signal frequency ratio. Will get divided to 256 later */
-  g_modulationIndex = 128;
+  g_modulationIndex = 256;
+  g_modulationOffset = 3;
 
   /* Output signal level amplitude envelope */
-  ampEnvSetting.attackRate = 4096;  
+  ampEnvSetting.attackRate = 1024;  
   ampEnvSetting.decayRate = 8;
   ampEnvSetting.sustainLevel = 0;
-  ampEnvSetting.releaseRate = 64;  
+  ampEnvSetting.releaseRate = 20;  
 
   /* Timbre changing frequency modulation level envelope */
-  fmEnvSetting.attackRate = 4096;
+  fmEnvSetting.attackRate = 700;
   fmEnvSetting.decayRate = 8;
   fmEnvSetting.sustainLevel = 0;
-  fmEnvSetting.releaseRate = 64;
+  fmEnvSetting.releaseRate = 20;
 
   /* LFO rate frequency modulation envlope */
   g_modFreq = 5;
-  g_maxModulation = 64;
-  modEnvSetting.attackRate = 16;
+  g_maxModulation = 200;
+  modEnvSetting.attackRate = 5;
   modEnvSetting.decayRate = 32;
   modEnvSetting.sustainLevel = 0;
-  modEnvSetting.releaseRate = 10000;
+  modEnvSetting.releaseRate = 1024;
     
   /* Output signal panning and 'tremolo' effect */
   outputLfo.freq = 3;
-  outputLfo.depth = 100;
+  outputLfo.depth = 200;
   outputLfo.phaseCounter_left = 0;
   outputLfo.phaseCounter_right = 0;  
   outputLfo.stereoPanning_offset = 0x8000;    
-
-  /* Final output stage low pass parameters */
-  g_cutoff = 5;  
-  g_resonance = 70;
-
-  soundLut = sin_lut;
 
   xfprintf(dbg_sendChar,"> Hello World\r\n");
   RingBuffer_InitBuffer(&midi_ringBuf, midi_ringBufData, sizeof(midi_ringBufData));
