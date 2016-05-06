@@ -3,7 +3,7 @@
 
 $fn=100;
 
-case(drawPart=1 /*0=box, 1=lid, 2==both*/); 
+case(drawPart=2 /*0=box, 1=lid, 2==both*/); 
 
 /**
  * Constructs the enclosure
@@ -17,7 +17,7 @@ module case (drawPart) {
     boardWidth=50;             // board width
     boardLength=50;            // board length
     boardHeight=1.4;           // board height
-    holePadding=2.5;           // center of the drill hole relative to the board edges
+    holePadding=2;             // center of the drill hole relative to the board edges
     holeRadius=1.4;            // drill hole radius
 
     innerMargin=0.5;           // margin, added to board dimensions, makes the inner dimensions larger * 2 in x/y
@@ -119,7 +119,7 @@ module case (drawPart) {
     }
     if (drawPart == 2) {
         box();
-        rotate([0,180,0]) translate([-(boardWidth ),0,-(innerHeight+5)]) lid();
+        rotate([0,180,0]) translate([-(boardWidth ),0,-(innerHeight+2)]) lid();
     }
 }
 
