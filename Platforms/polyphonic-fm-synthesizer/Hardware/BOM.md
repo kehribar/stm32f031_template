@@ -1,7 +1,7 @@
 Please feel free to open Pull Requests with other distributors for parts.
 
-| Part | Value              | Package         | Description                                      | Bürklin   | Mouser               | Comments                                                       |
-|------|--------------------|-----------------|--------------------------------------------------|-----------|----------------------|----------------------------------------------------------------|
+| Part | Value              | Package         | Description                                      | Bürklin | Mouser               | Comments                                                       |
+|------|--------------------|-----------------|--------------------------------------------------|---------|----------------------|----------------------------------------------------------------|
 | C1   | 1uF                | 0805            | Ceramic Capacitor                                | 53D2422 |                      |                                                                |
 | C7   | 1uF                | 0805            | Ceramic Capacitor                                | 53D2422 |                      |                                                                |
 | C8   | 1uF                | 0805            | Ceramic Capacitor                                | 53D2422 |                      |                                                                |
@@ -31,7 +31,7 @@ Please feel free to open Pull Requests with other distributors for parts.
 | IC1  | MCP 6002-I/SN      | SO08            | OP-Amp                                           | 49S5790 | 579-MCP6002-I/SN     |                                                                |
 | LED1 | RED LED            | 1206            | Led                                              | 66S9134 |                      |                                                                |
 | LED3 | GREEN LED          | 1206            | Led                                              | 66S9138 |                      |                                                                |
-| OK1  | LTV-816            | DIL04           | Opto Coupler                                     |           | 859-LTV-816          |                                                                |
+| OK1  | LTV-816            | DIL04           | Opto Coupler                                     |         | 859-LTV-816          |                                                                |
 | R1   | 100                | 0805            | Resistor                                         | 11E148  |                      |                                                                |
 | R2   | 100                | 0805            | Resistor                                         | 11E148  |                      |                                                                |
 | R3   | 100                | 0805            | Resistor                                         | 11E148  |                      |                                                                |
@@ -47,18 +47,18 @@ Please feel free to open Pull Requests with other distributors for parts.
 | R9   | 4.7k               | 0805            | Resistor                                         | 11E226  |                      |                                                                |
 | R10  | 4.7k               | 0805            | Resistor                                         | 11E226  |                      |                                                                |
 | R11  | 4.7k               | 0805            | Resistor                                         | 11E226  |                      |                                                                |
-| U$1  | WM8524CGEDT        | TSSOP16         |                                                  |           | 238-WM8524CGEDT      |                                                                |
-| U$2  | STM32F031F6P6      | TSSOP20         |                                                  |           | 511-STM32F031F6P6    |                                                                |
-| U1   | V_REG_LDOSMD       | SOT23-5         | Voltage Regulator LDO                            |           | 998-MIC5317-3.3YM5TR |                                                                |
-| U3   | V_REG_LDOSMD       | SOT23-5         | Voltage Regulator LDO                            |           | 998-MIC5317-3.3YM5TR |                                                                |
-|      |                    |                 |                                                  |           |                      |                                                                |
-| U$3  | MIDI_CONN_FEMALE   | DIN_5_FEMALE    | MIDI connector, no strain relieve (DIN-5 female) |           | 502-57PC5F           | Two additional holes need to be drilled to fit the Mouser part |
-| J2   | 1x02               | 3.5mm           | Power PIN HEADER, 3.5mm spacing!                 |           |                      |                                                                |
-| JP1  | 1x05               | 2.54mm          | SWD, 2.54mm spacing                              |           |                      |                                                                |
-| JP2  | 2x03               | 2.54mm          | Audio Output, (2 * L+R+GND)                      |           |                      |                                                                |
-| JP4  | 2x03               | 2.54mm          | Optional Serial Debug Port, 2.54 spacing         |           |                      |                                                                |
-| JP5  | 2x07               | 2.54mm          | Optional Extension Header                        |           |                      |                                                                |
-|      |                    |                 |                                                  |           |                      |                                                                |
-| Y1   | 8Mhz               | CRYSTAL_4.9X1.8 | Crystal                                          |           |                      | Optional, not Used in reference design. Also 8Mhz is unusual for that package.|
-| C20  | 18pF               | C0805           | Ceramic Capacitor                                |           |                      | Optional, not used in reference design                         |
-| C21  | 18pF               | C0805           |Ceramic Capacitor                                 |           |                      | Optional, not used in reference design                         |
+| U$1  | WM8524CGEDT        | TSSOP16         |                                                  |         | 238-WM8524CGEDT      |                                                                |
+| U$2  | STM32F031F6P6      | TSSOP20         |                                                  |         | 511-STM32F031F6P6    |                                                                |
+| U1   | V_REG_LDOSMD       | SOT23-5         | Voltage Regulator LDO                            |         | 998-MIC5317-3.3YM5TR |                                                                |
+| U3   | V_REG_LDOSMD       | SOT23-5         | Voltage Regulator LDO                            |         | 998-MIC5317-3.3YM5TR |                                                                |
+|      |                    |                 |                                                  |         |                      |                                                                |
+| U$3  | MIDI_CONN_FEMALE   | DIN_5_FEMALE    | MIDI connector, no strain relieve (DIN-5 female) |         | 502-57PC5F           | Two additional holes need to be drilled to fit the Mouser part |
+| J2   | 1x02               | 3.5mm           | Power PIN HEADER, 3.5mm spacing!                 |         |                      |                                                                |
+| JP1  | 1x05               | 2.54mm          | SWD, 2.54mm spacing                              |         |                      |                                                                |
+| JP2  | 2x03               | 2.54mm          | Audio Output, (2 * L+R+GND)                      |         |                      |                                                                |
+| JP4  | 2x03               | 2.54mm          | Optional Serial Debug Port, 2.54 spacing         |         |                      |                                                                |
+| JP5  | 2x07               | 2.54mm          | Optional Extension Header                        |         |                      |                                                                |
+|      |                    |                 |                                                  |         |                      |                                                                |
+| Y1   | 8Mhz               | CRYSTAL_4.9X1.8 | Crystal                                          |         |                      | Optional, not Used in reference design. Also 8Mhz is unusual for that package.|
+| C20  | 18pF               | C0805           | Ceramic Capacitor                                |         |                      | Optional, not used in reference design                         |
+| C21  | 18pF               | C0805           |Ceramic Capacitor                                 |         |                      | Optional, not used in reference design                         |
